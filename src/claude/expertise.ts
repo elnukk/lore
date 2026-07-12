@@ -78,11 +78,19 @@ export async function rankExperts(
 
   const raw = parseJsonResponse<{ experts?: Partial<ExpertRankResult>[] }>(text);
   const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+  const validSignals = new Set(["slack", "wiki", "both"]);
 
   return (raw.experts ?? [])
     .filter(
-      (expert): expert is ExpertRankResult =>
+      (expert): expert is Partial<ExpertRankResult> & { user_id: string; reason: string } =>
         Boolean(expert.user_id && expert.reason) && candidateIds.has(expert.user_id as string),
     )
+    .map((expert) => ({
+      user_id: expert.user_id,
+      reason: expert.reason,
+      signal: validSignals.has(expert.signal as string)
+        ? (expert.signal as ExpertRankResult["signal"])
+        : "both",
+    }))
     .slice(0, 3);
 }

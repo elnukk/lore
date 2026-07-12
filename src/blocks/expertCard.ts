@@ -53,7 +53,7 @@ export function expertCardBlocks(
 
     blocks.push({
       type: "context",
-      elements: [{ type: "mrkdwn", text: SIGNAL_LABELS[expert.signal] }],
+      elements: [{ type: "mrkdwn", text: SIGNAL_LABELS[expert.signal] ?? "📄💬 Combined signal" }],
     });
   });
 
