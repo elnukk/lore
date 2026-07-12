@@ -170,6 +170,14 @@ export async function handleExpertiseQuery(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Claude error";
+    const details =
+      typeof error === "object" && error !== null && "data" in error
+        ? (error as { data?: { response_metadata?: { messages?: string[] } } }).data
+            ?.response_metadata?.messages
+        : undefined;
+    if (details?.length) {
+      console.error("Slack block validation error (expert card):", details);
+    }
     await say({ text: `Couldn't rank experts: ${message}`, thread_ts: threadTs });
   }
 }

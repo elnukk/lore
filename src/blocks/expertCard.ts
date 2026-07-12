@@ -20,11 +20,33 @@ export interface ExpertEntry {
   signal: "slack" | "wiki" | "both";
 }
 
+/**
+ * Each expert is packed into a single `fields` entry rather than a repeated
+ * divider+section+context per expert. Legacy Slack `attachments` enforce a
+ * much stricter block-count ceiling than top-level message blocks, so a
+ * per-expert block count (which used to scale up to ~11 blocks for 3
+ * experts) could push past it and cause an invalid_blocks error. Using
+ * fields keeps the block count fixed at 4 regardless of how many experts
+ * are ranked — the same pattern already proven safe in the other cards.
+ */
 export function expertCardBlocks(
   topic: string,
   experts: ExpertEntry[],
 ): (Block | KnownBlock)[] {
-  const blocks: (Block | KnownBlock)[] = [
+  const fields = experts.map((expert, index) => {
+    const medal = RANK_MEDALS[index] ?? "👤";
+    const nameLine = expert.candidate.slackUserId
+      ? `${medal} *<@${expert.candidate.slackUserId}>*`
+      : `${medal} *${expert.candidate.displayName}*`;
+    const signalLabel = SIGNAL_LABELS[expert.signal] ?? "📄💬 Combined signal";
+
+    return {
+      type: "mrkdwn" as const,
+      text: `${nameLine}\n${expert.reason}\n_${signalLabel}_`,
+    };
+  });
+
+  return [
     {
       type: "header",
       text: { type: "plain_text", text: `🧠 Experts on ${topic}`, emoji: true },
@@ -36,28 +58,9 @@ export function expertCardBlocks(
         text: "Based on Slack activity and wiki authorship in your watched channels:",
       },
     },
+    { type: "divider" },
+    { type: "section", fields },
   ];
-
-  experts.forEach((expert, index) => {
-    blocks.push({ type: "divider" });
-
-    const medal = RANK_MEDALS[index] ?? "👤";
-    const nameLine = expert.candidate.slackUserId
-      ? `${medal} *<@${expert.candidate.slackUserId}>*`
-      : `${medal} *${expert.candidate.displayName}*`;
-
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: `${nameLine}\n${expert.reason}` },
-    });
-
-    blocks.push({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: SIGNAL_LABELS[expert.signal] ?? "📄💬 Combined signal" }],
-    });
-  });
-
-  return blocks;
 }
 
 /**
