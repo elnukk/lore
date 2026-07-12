@@ -209,6 +209,41 @@ export function extractExpertiseTopic(text: string): string {
   return cleaned;
 }
 
+export function isUpdateInstructionQuery(text: string): boolean {
+  const normalized = extractKeywords(text).toLowerCase().trim();
+
+  const patterns = [
+    // any message starting with an imperative verb, e.g. "update timeline",
+    // "update this", "please fix the wiki" — but not "update me/us on X",
+    // which is asking for information, not instructing an edit.
+    /^(please\s+)?(update|edit|change|fix|revise|correct)\b(?!\s+(me|us)\b)/,
+    // politely-phrased requests: "can you update...", "could you please fix..."
+    /\b(can|could|would)\s+you\s+(please\s+)?(update|edit|change|fix|revise|correct)\b(?!\s+(me|us)\b)/,
+    /\b(wiki|doc|docs|documentation)\b[^.?!]{0,40}\b(needs?(\s+to\s+be)?|should be)\s+(updated|changed|fixed|revised)\b/,
+  ];
+
+  return patterns.some((pattern) => pattern.test(normalized));
+}
+
+const UPDATE_TOPIC_PATTERNS: RegExp[] = [
+  /\bupdate\s+(?:the\s+)?(?:wiki|doc|docs|documentation)\s+(?:about|on|for|regarding)\s+(.+)$/i,
+  /\bedit\s+(?:the\s+)?(?:wiki|doc|docs|documentation)\s+(?:about|on|for|regarding)\s+(.+)$/i,
+];
+
+export function extractUpdateTopic(text: string): string {
+  const cleaned = extractKeywords(text).replace(/[?.!]+$/, "").trim();
+
+  for (const pattern of UPDATE_TOPIC_PATTERNS) {
+    const match = cleaned.match(pattern);
+    const topic = match?.[1]?.trim();
+    if (topic) {
+      return stripLeadingFiller(topic);
+    }
+  }
+
+  return "";
+}
+
 export function isSourceInventoryQuery(text: string): boolean {
   const normalized = extractKeywords(text).toLowerCase();
 

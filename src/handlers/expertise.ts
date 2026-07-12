@@ -1,6 +1,10 @@
 import type { App, SayFn } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
-import { expertCardBlocks } from "../blocks/expertCard.js";
+import {
+  EXPERT_CARD_COLOR,
+  expertCardActions,
+  expertCardBlocks,
+} from "../blocks/expertCard.js";
 import type { ExpertCandidateInput } from "../claude/expertise.js";
 import { rankExperts } from "../claude/expertise.js";
 import type { WorkspaceConfig } from "../config/workspace.js";
@@ -45,11 +49,6 @@ export async function handleExpertiseQuery(
 ): Promise<void> {
   const watchedChannelIds = config?.watchedChannels ?? [];
   const wiki = config?.wiki;
-
-  await say({
-    text: `🧠 Looking for who knows about "${topic}"...`,
-    thread_ts: threadTs,
-  });
 
   const [activity, wikiChunks] = await Promise.all([
     aggregateSlackActivity({
@@ -165,7 +164,8 @@ export async function handleExpertiseQuery(
 
     await say({
       text: `🧠 Experts on ${topic}`,
-      blocks: expertCardBlocks(topic, experts),
+      blocks: expertCardActions(experts),
+      attachments: [{ color: EXPERT_CARD_COLOR, blocks: expertCardBlocks(topic, experts) }],
       thread_ts: threadTs,
     });
   } catch (error) {
@@ -183,6 +183,11 @@ export function registerExpertiseHandlers(app: App): void {
     const targetUserId = action && "value" in action ? action.value : undefined;
     const fallbackChannel =
       "channel" in body && body.channel?.id ? body.channel.id : requesterId;
+    const threadTs =
+      "message" in body && body.message && "thread_ts" in body.message
+        ? (body.message as { thread_ts?: string; ts?: string }).thread_ts ??
+          (body.message as { ts?: string }).ts
+        : undefined;
 
     if (!targetUserId) {
       return;
@@ -195,13 +200,14 @@ export function registerExpertiseHandlers(app: App): void {
       if (dmChannelId) {
         await client.chat.postMessage({
           channel: dmChannelId,
-          text: `👋 Hey! <@${requesterId}> asked @knowledge about a topic and it looks like you might be the right person to help. Do you have 5 mins?`,
+          text: `👋 Hey! <@${requesterId}> asked @lore about a topic and it looks like you might be the right person to help. Do you have 5 mins?`,
         });
       }
 
       await client.chat.postEphemeral({
         channel: fallbackChannel,
         user: requesterId,
+        thread_ts: threadTs,
         text: `✅ Sent <@${targetUserId}> a heads up — they'll follow up with you.`,
       });
     } catch (error) {
@@ -209,6 +215,7 @@ export function registerExpertiseHandlers(app: App): void {
       await client.chat.postEphemeral({
         channel: fallbackChannel,
         user: requesterId,
+        thread_ts: threadTs,
         text: `Couldn't reach that person: ${message}`,
       });
     }

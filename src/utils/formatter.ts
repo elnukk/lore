@@ -51,6 +51,20 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
+const PLACEHOLDER_VALUES = new Set(["n/a", "na", "none", "unknown", "null", "undefined", ""]);
+
+/**
+ * Claude sometimes fills required JSON fields with a placeholder like "N/A"
+ * instead of omitting them when it has no real source to cite. Treat those
+ * the same as "absent" so cards don't render a fake-looking source badge.
+ */
+export function isRealValue(value?: string | null): value is string {
+  if (!value) {
+    return false;
+  }
+  return !PLACEHOLDER_VALUES.has(value.trim().toLowerCase());
+}
+
 export function providerLabel(provider: string): string {
   switch (provider) {
     case "notion":

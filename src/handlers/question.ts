@@ -4,15 +4,22 @@ import type { Block, KnownBlock } from "@slack/types";
 import { assembleContext } from "../context/assembler.js";
 import {
   answerCardBlocks,
+  answerCardColor,
+  INSUFFICIENT_CARD_COLOR,
   insufficientCardBlocks,
 } from "../blocks/answerCard.js";
-import { conflictCardBlocks } from "../blocks/conflictCard.js";
+import {
+  CONFLICT_CARD_COLOR,
+  conflictCardActions,
+  conflictCardBlocks,
+} from "../blocks/conflictCard.js";
 import { sourcesInventoryBlocks } from "../blocks/sourcesCard.js";
 import { answerAndDetectConflict } from "../claude/answer.js";
 import { getWorkspace } from "../config/workspace.js";
 import { ensureFreshWiki } from "../config/wikiToken.js";
 import { createPendingConflict } from "../context/pendingUpdates.js";
 import { handleExpertiseQuery } from "./expertise.js";
+import { handleUpdateInstruction } from "./update.js";
 import { listWikiDocs, searchWikiDocs } from "../mcp/index.js";
 import type { ThreadChunk } from "../rts/search.js";
 import { searchSlackThreads } from "../rts/search.js";
@@ -22,6 +29,7 @@ import {
   extractKeywords,
   isExpertiseQuery,
   isSourceInventoryQuery,
+  isUpdateInstructionQuery,
 } from "../utils/keywords.js";
 import { providerLabel } from "../utils/formatter.js";
 
@@ -79,18 +87,20 @@ async function handleQuestion(
     return;
   }
 
+  if (isUpdateInstructionQuery(query)) {
+    await handleUpdateInstruction(
+      query,
+      teamId,
+      config,
+      client,
+      say,
+      contextChannelId,
+      threadTs,
+    );
+    return;
+  }
+
   const inventoryQuery = isSourceInventoryQuery(query);
-
-  const loadingText = inventoryQuery
-    ? "📚 Checking connected sources..."
-    : wiki
-      ? "🔍 Searching your wiki and Slack history..."
-      : "🔍 Searching your Slack history...";
-
-  await say({
-    text: loadingText,
-    thread_ts: threadTs,
-  });
 
   if (inventoryQuery) {
     const [wikiResult, channelNames] = await Promise.all([
@@ -186,6 +196,8 @@ async function handleQuestion(
   try {
     const result = await answerAndDetectConflict(context);
     let blocks: (Block | KnownBlock)[];
+    let actionBlocks: (Block | KnownBlock)[] = [];
+    let color: string;
     let text: string;
 
     if (result.mode === "conflict") {
@@ -217,7 +229,7 @@ async function handleQuestion(
             })
           : undefined;
 
-      blocks = conflictCardBlocks(result, {
+      const conflictPayload = {
         teamId: teamId ?? "",
         question: query,
         wikiTitle: result.wiki_source?.title,
@@ -227,13 +239,19 @@ async function handleQuestion(
         slackUrl: result.slack_source?.url,
         slackExcerpt: result.slack_excerpt,
         updateId,
-      });
+      };
+
+      blocks = conflictCardBlocks(result, conflictPayload);
+      actionBlocks = conflictCardActions(result, conflictPayload);
+      color = CONFLICT_CARD_COLOR;
       text = result.conflict_summary ?? "I found a conflict between your wiki and Slack.";
     } else if (result.mode === "insufficient") {
       blocks = insufficientCardBlocks(result);
+      color = INSUFFICIENT_CARD_COLOR;
       text = result.answer ?? "I don't have enough information to answer that.";
     } else {
       blocks = answerCardBlocks(query, result);
+      color = answerCardColor(result);
       text = result.answer ?? "Here's what I found.";
     }
 
@@ -250,7 +268,8 @@ async function handleQuestion(
 
     await say({
       text,
-      blocks,
+      blocks: actionBlocks,
+      attachments: [{ color, blocks }],
       thread_ts: threadTs,
     });
   } catch (error) {

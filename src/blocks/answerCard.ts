@@ -1,14 +1,15 @@
 import type { Block, KnownBlock } from "@slack/types";
 import type { AnswerResult } from "../claude/types.js";
+import { isRealValue } from "../utils/formatter.js";
 
 function formatDisplayDate(date?: string): string {
-  if (!date) {
+  if (!isRealValue(date)) {
     return "unknown date";
   }
 
   const parsed = Date.parse(date);
   if (Number.isNaN(parsed)) {
-    return date;
+    return "unknown date";
   }
 
   return new Date(parsed).toLocaleDateString("en-US", {
@@ -16,6 +17,17 @@ function formatDisplayDate(date?: string): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+export const ANSWER_CARD_COLOR_CONSISTENT = "#2EB67D";
+export const ANSWER_CARD_COLOR_SINGLE_SOURCE = "#36C5F0";
+export const INSUFFICIENT_CARD_COLOR = "#8D8D8D";
+
+export function answerCardColor(result: AnswerResult): string {
+  const sourceCount =
+    (isRealValue(result.wiki_source?.title) ? 1 : 0) +
+    (isRealValue(result.slack_source?.channel) ? 1 : 0);
+  return sourceCount >= 2 ? ANSWER_CARD_COLOR_CONSISTENT : ANSWER_CARD_COLOR_SINGLE_SOURCE;
 }
 
 export function answerCardBlocks(
@@ -38,39 +50,39 @@ export function answerCardBlocks(
     },
   ];
 
-  const sources: string[] = [];
-  let footer = "This answer is based on the sources below.";
+  const sourceFields: { type: "mrkdwn"; text: string }[] = [];
 
-  if (result.wiki_source?.title) {
-    const link = result.wiki_source.url
-      ? `<${result.wiki_source.url}|${result.wiki_source.title}>`
-      : result.wiki_source.title;
-    sources.push(
-      `📄 ${link} — updated ${formatDisplayDate(result.wiki_source.date)}`,
-    );
+  if (isRealValue(result.wiki_source?.title)) {
+    const link = isRealValue(result.wiki_source?.url)
+      ? `<${result.wiki_source?.url}|${result.wiki_source?.title}>`
+      : result.wiki_source?.title;
+    sourceFields.push({
+      type: "mrkdwn",
+      text: `📄 *Wiki*\n${link}\n_updated ${formatDisplayDate(result.wiki_source?.date)}_`,
+    });
   }
 
-  if (result.slack_source?.channel) {
-    const link = result.slack_source.url
-      ? `<${result.slack_source.url}|#${result.slack_source.channel}>`
-      : `#${result.slack_source.channel}`;
-    sources.push(
-      `💬 ${link} — ${formatDisplayDate(result.slack_source.date)}`,
-    );
+  if (isRealValue(result.slack_source?.channel)) {
+    const link = isRealValue(result.slack_source?.url)
+      ? `<${result.slack_source?.url}|#${result.slack_source?.channel}>`
+      : `#${result.slack_source?.channel}`;
+    sourceFields.push({
+      type: "mrkdwn",
+      text: `💬 *Slack*\n${link}\n_${formatDisplayDate(result.slack_source?.date)}_`,
+    });
   }
 
-  if (sources.length > 0) {
-    if (sources.length >= 2) {
-      footer = "Both sources look consistent. ✅";
-    }
+  if (sourceFields.length > 0) {
+    const footer =
+      sourceFields.length >= 2
+        ? "✅ Both sources look consistent."
+        : "This answer is based on the source below.";
 
     blocks.push({ type: "divider" });
+    blocks.push({ type: "section", fields: sourceFields });
     blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: ["*Sources*", ...sources, "", footer].join("\n"),
-      },
+      type: "context",
+      elements: [{ type: "mrkdwn", text: footer }],
     });
   }
 
@@ -85,9 +97,7 @@ export function insufficientCardBlocks(
       type: "section",
       text: {
         type: "mrkdwn",
-        text:
-          result.answer ??
-          "I don't have enough information in your wiki or Slack history to answer that.",
+        text: `🤷 ${result.answer ?? "I don't have enough information in your wiki or Slack history to answer that."}`,
       },
     },
   ];
